@@ -1,0 +1,12 @@
+.{
+    .name = .automerge_zig,
+    .version = "0.1.0",
+    .fingerprint = 0xa9fdd5a7487be6d0,
+    .minimum_zig_version = "0.15.1",
+    .dependencies = .{},
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+    },
+}

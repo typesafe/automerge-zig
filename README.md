@@ -1,2 +1,1 @@
-# automerge-zig
-Native Zig implementation of Automerge.
+[Automerge](https://automerge.org/), reinvented in Zig.
