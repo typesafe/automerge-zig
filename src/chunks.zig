@@ -32,11 +32,18 @@ pub const ColumnMetadata = struct {
     len: u64,
 };
 
-const ColumSpecification = packed struct {
-    id: u28,
-    deflate: u1,
+const ColumSpecification = packed struct(u32) {
     type: ColumnSpecificationType,
+    deflate: bool,
+    id: u28,
 };
+
+test "ColumSpecification" {
+    const spec: ColumSpecification = @bitCast(@as(u32, 0b11001));
+    try std.testing.expect(spec.id == 1);
+    try std.testing.expect(spec.deflate == true);
+    try std.testing.expect(spec.type == .actor);
+}
 
 pub const ColumnSpecificationType = enum(u3) {
     group,
@@ -49,13 +56,43 @@ pub const ColumnSpecificationType = enum(u3) {
     value,
 };
 
+const ValueMetadataColumn = packed struct(u64) {
+    type: ValueType,
+    len: u60,
+};
+
+const ValueType = enum(u4) {
+    null = 0,
+    false,
+    true,
+    u64,
+    i64,
+    f64,
+    uft8,
+    bytes,
+    counter,
+    timestamp,
+};
+
+// Parsed column data types
+pub const ColumnData = union(ColumnSpecificationType) {
+    group: []u8, // Raw group data for now
+    actor: []u32, // Actor IDs as uleb128 values
+    ulEB: []u64, // Unsigned LEB128 values
+    delta: []i64, // Delta encoded signed values
+    boolean: []bool, // Boolean values
+    string: [][]u8, // String data
+    value_metadata: []u8, // Raw value metadata for now
+    value: []u8, // Raw value data for now
+};
+
 pub const DocumentChunk = struct {
     actors: std.ArrayList([]u8),
     change_hashes: std.ArrayList([32]u8),
     change_columns_metadata: std.ArrayList(ColumnMetadata),
     operation_columns_metadata: std.ArrayList(ColumnMetadata),
-    change_columns_data: std.ArrayList([]u8),
-    operation_columns_data: std.ArrayList([]u8),
+    change_columns_data: std.ArrayList(ColumnData),
+    operation_columns_data: std.ArrayList(ColumnData),
 
     pub fn read(reader: *std.Io.Reader, allocator: std.mem.Allocator) !DocumentChunk {
         const actors = try readActorIds(reader, allocator);
@@ -116,16 +153,104 @@ pub const DocumentChunk = struct {
         return ret;
     }
 
-    pub fn readColumnData(reader: *std.Io.Reader, allocator: std.mem.Allocator, metadata: std.ArrayList(ColumnMetadata)) !std.ArrayList([]u8) {
-        var ret = try std.ArrayList([]u8).initCapacity(allocator, metadata.items.len);
+    pub fn readColumnData(reader: *std.Io.Reader, allocator: std.mem.Allocator, metadata: std.ArrayList(ColumnMetadata)) !std.ArrayList(ColumnData) {
+        var ret = try std.ArrayList(ColumnData).initCapacity(allocator, metadata.items.len);
 
         for (metadata.items) |meta| {
-            const data = try allocator.alloc(u8, meta.len);
-            try reader.readSliceAll(data);
-            try ret.append(allocator, data);
+            const raw_data = try allocator.alloc(u8, meta.len);
+            try reader.readSliceAll(raw_data);
+
+            const column_data = try parseColumnData(allocator, meta.spec.type, raw_data);
+            try ret.append(allocator, column_data);
         }
 
         return ret;
+    }
+
+    fn parseColumnData(allocator: std.mem.Allocator, column_type: ColumnSpecificationType, raw_data: []u8) !ColumnData {
+        switch (column_type) {
+            .group => {
+                // For now, just return raw data for group columns
+                return ColumnData{ .group = raw_data };
+            },
+            .actor => {
+                // Parse actor IDs as sequence of uleb128 values
+                var actor_ids = std.ArrayList(u32).initCapacity(allocator, 0) catch unreachable;
+                var stream = std.io.fixedBufferStream(raw_data);
+                const reader = stream.reader();
+
+                while (stream.pos < raw_data.len) {
+                    const actor_id = std.leb.readUleb128(u32, reader) catch break;
+                    try actor_ids.append(allocator, actor_id);
+                }
+
+                return ColumnData{ .actor = actor_ids.items };
+            },
+            .ulEB => {
+                // Parse unsigned LEB128 values
+                var values = std.ArrayList(u64).initCapacity(allocator, 0) catch unreachable;
+                var stream = std.io.fixedBufferStream(raw_data);
+                const reader = stream.reader();
+
+                while (stream.pos < raw_data.len) {
+                    const value = std.leb.readUleb128(u64, reader) catch break;
+                    try values.append(allocator, value);
+                }
+
+                return ColumnData{ .ulEB = values.items };
+            },
+            .delta => {
+                // Parse delta-encoded signed values
+                var values = std.ArrayList(i64).initCapacity(allocator, 0) catch unreachable;
+                var stream = std.io.fixedBufferStream(raw_data);
+                const reader = stream.reader();
+                var current: i64 = 0;
+
+                while (stream.pos < raw_data.len) {
+                    const delta = std.leb.readIleb128(i64, reader) catch break;
+                    current += delta;
+                    try values.append(allocator, current);
+                }
+
+                return ColumnData{ .delta = values.items };
+            },
+            .boolean => {
+                // Parse boolean values (each byte represents a boolean)
+                var bools = try allocator.alloc(bool, raw_data.len);
+                for (raw_data, 0..) |byte, i| {
+                    bools[i] = byte != 0;
+                }
+
+                return ColumnData{ .boolean = bools };
+            },
+            .string => {
+                // Parse string data - format: length-prefixed strings
+                var strings = std.ArrayList([]u8).initCapacity(allocator, 0) catch unreachable;
+                var stream = std.io.fixedBufferStream(raw_data);
+                const reader = stream.reader();
+
+                while (stream.pos < raw_data.len) {
+                    const str_len = std.leb.readUleb128(usize, reader) catch break;
+                    if (stream.pos + str_len > raw_data.len) break;
+
+                    const str_data = try allocator.alloc(u8, str_len);
+                    const bytes_read = reader.readAll(str_data) catch break;
+                    if (bytes_read != str_len) break;
+
+                    try strings.append(allocator, str_data);
+                }
+
+                return ColumnData{ .string = strings.items };
+            },
+            .value_metadata => {
+                // For now, just return raw data for value metadata
+                return ColumnData{ .value_metadata = raw_data };
+            },
+            .value => {
+                // For now, just return raw data for values
+                return ColumnData{ .value = raw_data };
+            },
+        }
     }
 };
 pub const ChangeChunk = struct {};

@@ -80,11 +80,61 @@ fn print(self: *const Self) void {
 
                 std.debug.print("  Change Column Data ({}):\n", .{doc_chunk.change_columns_data.items.len});
                 for (doc_chunk.change_columns_data.items, 0..) |data, j| {
-                    std.debug.print("    [{}]: ", .{j});
-                    for (data) |byte| {
-                        std.debug.print("{x:0>2}", .{byte});
+                    std.debug.print("    [{}]: type={s}, ", .{ j, @tagName(data) });
+                    switch (data) {
+                        .group => |bytes| {
+                            for (bytes) |byte| {
+                                std.debug.print("{x:0>2}", .{byte});
+                            }
+                            std.debug.print(" (len={})\n", .{bytes.len});
+                        },
+                        .actor => |ids| {
+                            std.debug.print("actors=[", .{});
+                            for (ids, 0..) |id, k| {
+                                if (k > 0) std.debug.print(",", .{});
+                                std.debug.print("{}", .{id});
+                            }
+                            std.debug.print("] (count={})\n", .{ids.len});
+                        },
+                        .ulEB => |values| {
+                            std.debug.print("values=[", .{});
+                            for (values, 0..) |val, k| {
+                                if (k > 0) std.debug.print(",", .{});
+                                std.debug.print("{}", .{val});
+                            }
+                            std.debug.print("] (count={})\n", .{values.len});
+                        },
+                        .delta => |values| {
+                            std.debug.print("deltas=[", .{});
+                            for (values, 0..) |val, k| {
+                                if (k > 0) std.debug.print(",", .{});
+                                std.debug.print("{}", .{val});
+                            }
+                            std.debug.print("] (count={})\n", .{values.len});
+                        },
+                        .boolean => |bools| {
+                            std.debug.print("bools=[", .{});
+                            for (bools, 0..) |b, k| {
+                                if (k > 0) std.debug.print(",", .{});
+                                std.debug.print("{}", .{b});
+                            }
+                            std.debug.print("] (count={})\n", .{bools.len});
+                        },
+                        .string => |strings| {
+                            std.debug.print("strings=[", .{});
+                            for (strings, 0..) |str, k| {
+                                if (k > 0) std.debug.print(",", .{});
+                                std.debug.print("\"{s}\"", .{str});
+                            }
+                            std.debug.print("] (count={})\n", .{strings.len});
+                        },
+                        .value_metadata, .value => |bytes| {
+                            for (bytes) |byte| {
+                                std.debug.print("{x:0>2}", .{byte});
+                            }
+                            std.debug.print(" (len={})\n", .{bytes.len});
+                        },
                     }
-                    std.debug.print(" (len={})\n", .{data.len});
                 }
 
                 std.debug.print("  Operation Column Metadata ({}):\n", .{doc_chunk.operation_columns_metadata.items.len});
@@ -94,11 +144,61 @@ fn print(self: *const Self) void {
 
                 std.debug.print("  Operation Column Data ({}):\n", .{doc_chunk.operation_columns_data.items.len});
                 for (doc_chunk.operation_columns_data.items, 0..) |data, j| {
-                    std.debug.print("    [{}]: ", .{j});
-                    for (data) |byte| {
-                        std.debug.print("{x:0>2}", .{byte});
+                    std.debug.print("    [{}]: type={s}, ", .{ j, @tagName(data) });
+                    switch (data) {
+                        .group => |bytes| {
+                            for (bytes) |byte| {
+                                std.debug.print("{x:0>2}", .{byte});
+                            }
+                            std.debug.print(" (len={})\n", .{bytes.len});
+                        },
+                        .actor => |ids| {
+                            std.debug.print("actors=[", .{});
+                            for (ids, 0..) |id, k| {
+                                if (k > 0) std.debug.print(",", .{});
+                                std.debug.print("{}", .{id});
+                            }
+                            std.debug.print("] (count={})\n", .{ids.len});
+                        },
+                        .ulEB => |values| {
+                            std.debug.print("values=[", .{});
+                            for (values, 0..) |val, k| {
+                                if (k > 0) std.debug.print(",", .{});
+                                std.debug.print("{}", .{val});
+                            }
+                            std.debug.print("] (count={})\n", .{values.len});
+                        },
+                        .delta => |values| {
+                            std.debug.print("deltas=[", .{});
+                            for (values, 0..) |val, k| {
+                                if (k > 0) std.debug.print(",", .{});
+                                std.debug.print("{}", .{val});
+                            }
+                            std.debug.print("] (count={})\n", .{values.len});
+                        },
+                        .boolean => |bools| {
+                            std.debug.print("bools=[", .{});
+                            for (bools, 0..) |b, k| {
+                                if (k > 0) std.debug.print(",", .{});
+                                std.debug.print("{}", .{b});
+                            }
+                            std.debug.print("] (count={})\n", .{bools.len});
+                        },
+                        .string => |strings| {
+                            std.debug.print("strings=[", .{});
+                            for (strings, 0..) |str, k| {
+                                if (k > 0) std.debug.print(",", .{});
+                                std.debug.print("\"{s}\"", .{str});
+                            }
+                            std.debug.print("] (count={})\n", .{strings.len});
+                        },
+                        .value_metadata, .value => |bytes| {
+                            for (bytes) |byte| {
+                                std.debug.print("{x:0>2}", .{byte});
+                            }
+                            std.debug.print(" (len={})\n", .{bytes.len});
+                        },
                     }
-                    std.debug.print(" (len={})\n", .{data.len});
                 }
             },
             .change => {
