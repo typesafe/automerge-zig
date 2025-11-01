@@ -54,13 +54,24 @@ pub const DocumentChunk = struct {
     change_hashes: std.ArrayList([32]u8),
     change_columns_metadata: std.ArrayList(ColumnMetadata),
     operation_columns_metadata: std.ArrayList(ColumnMetadata),
+    change_columns_data: std.ArrayList([]u8),
+    operation_columns_data: std.ArrayList([]u8),
 
     pub fn read(reader: *std.Io.Reader, allocator: std.mem.Allocator) !DocumentChunk {
+        const actors = try readActorIds(reader, allocator);
+        const change_hashes = try readChangeHashes(reader, allocator);
+        const change_columns_metadata = try readColumMetadata(reader, allocator);
+        const operation_columns_metadata = try readColumMetadata(reader, allocator);
+        const change_columns_data = try readColumnData(reader, allocator, change_columns_metadata);
+        const operation_columns_data = try readColumnData(reader, allocator, operation_columns_metadata);
+
         return .{
-            .actors = try readActorIds(reader, allocator),
-            .change_hashes = try readChangeHashes(reader, allocator),
-            .change_columns_metadata = try readColumMetadata(reader, allocator),
-            .operation_columns_metadata = try readColumMetadata(reader, allocator),
+            .actors = actors,
+            .change_hashes = change_hashes,
+            .change_columns_metadata = change_columns_metadata,
+            .operation_columns_metadata = operation_columns_metadata,
+            .change_columns_data = change_columns_data,
+            .operation_columns_data = operation_columns_data,
         };
     }
 
@@ -100,6 +111,18 @@ pub const DocumentChunk = struct {
                 .spec = @bitCast(try std.leb.readUleb128(u32, legacy_reader)),
                 .len = try std.leb.readUleb128(u64, legacy_reader),
             });
+        }
+
+        return ret;
+    }
+
+    pub fn readColumnData(reader: *std.Io.Reader, allocator: std.mem.Allocator, metadata: std.ArrayList(ColumnMetadata)) !std.ArrayList([]u8) {
+        var ret = try std.ArrayList([]u8).initCapacity(allocator, metadata.items.len);
+
+        for (metadata.items) |meta| {
+            const data = try allocator.alloc(u8, meta.len);
+            try reader.readSliceAll(data);
+            try ret.append(allocator, data);
         }
 
         return ret;

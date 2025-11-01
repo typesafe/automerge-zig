@@ -12,11 +12,13 @@ pub fn read(reader: *std.Io.Reader, allocator: std.mem.Allocator) !Self {
     var arena = try allocator.create(std.heap.ArenaAllocator);
     arena.* = std.heap.ArenaAllocator.init(allocator);
 
-    var chunks = std.ArrayList(Chunk).initBuffer(&.{});
+    var chunks = try std.ArrayList(Chunk).initCapacity(arena.allocator(), 0);
     while (true) {
-        const chunk = try Chunk.read(reader, arena.allocator());
+        const chunk = Chunk.read(reader, arena.allocator()) catch |err| switch (err) {
+            error.EndOfStream => break,
+            else => return err,
+        };
         try chunks.append(allocator, chunk);
-        break;
     }
 
     return Self{
@@ -39,8 +41,74 @@ pub fn init(allocator: std.mem.Allocator) Self {
 }
 
 pub fn deinit(self: *Self) void {
+    self.chunks.deinit(self.allocator);
     self.arena.deinit();
     self.allocator.destroy(self.arena);
+}
+
+fn print(self: *const Self) void {
+    std.debug.print("\n=== Automerge Document Parse Results ===\n", .{});
+    std.debug.print("Number of chunks: {}\n\n", .{self.chunks.items.len});
+
+    for (self.chunks.items, 0..) |chunk, i| {
+        std.debug.print("Chunk {}: ", .{i});
+        switch (chunk) {
+            .document => |doc_chunk| {
+                std.debug.print("DOCUMENT CHUNK\n", .{});
+                std.debug.print("  Actors ({}):\n", .{doc_chunk.actors.items.len});
+                for (doc_chunk.actors.items, 0..) |actor, j| {
+                    std.debug.print("    [{}]: ", .{j});
+                    for (actor) |byte| {
+                        std.debug.print("{x:0>2}", .{byte});
+                    }
+                    std.debug.print("\n", .{});
+                }
+
+                std.debug.print("  Change Hashes ({}):\n", .{doc_chunk.change_hashes.items.len});
+                for (doc_chunk.change_hashes.items, 0..) |hash, j| {
+                    std.debug.print("    [{}]: ", .{j});
+                    for (hash) |byte| {
+                        std.debug.print("{x:0>2}", .{byte});
+                    }
+                    std.debug.print("\n", .{});
+                }
+
+                std.debug.print("  Change Column Metadata ({}):\n", .{doc_chunk.change_columns_metadata.items.len});
+                for (doc_chunk.change_columns_metadata.items, 0..) |meta, j| {
+                    std.debug.print("    [{}]: id={}, deflate={}, type={s}, len={}\n", .{ j, meta.spec.id, meta.spec.deflate, @tagName(meta.spec.type), meta.len });
+                }
+
+                std.debug.print("  Change Column Data ({}):\n", .{doc_chunk.change_columns_data.items.len});
+                for (doc_chunk.change_columns_data.items, 0..) |data, j| {
+                    std.debug.print("    [{}]: ", .{j});
+                    for (data) |byte| {
+                        std.debug.print("{x:0>2}", .{byte});
+                    }
+                    std.debug.print(" (len={})\n", .{data.len});
+                }
+
+                std.debug.print("  Operation Column Metadata ({}):\n", .{doc_chunk.operation_columns_metadata.items.len});
+                for (doc_chunk.operation_columns_metadata.items, 0..) |meta, j| {
+                    std.debug.print("    [{}]: id={}, deflate={}, type={s}, len={}\n", .{ j, meta.spec.id, meta.spec.deflate, @tagName(meta.spec.type), meta.len });
+                }
+
+                std.debug.print("  Operation Column Data ({}):\n", .{doc_chunk.operation_columns_data.items.len});
+                for (doc_chunk.operation_columns_data.items, 0..) |data, j| {
+                    std.debug.print("    [{}]: ", .{j});
+                    for (data) |byte| {
+                        std.debug.print("{x:0>2}", .{byte});
+                    }
+                    std.debug.print(" (len={})\n", .{data.len});
+                }
+            },
+            .change => {
+                std.debug.print("CHANGE CHUNK\n", .{});
+                std.debug.print("  (Change chunk parsing not yet implemented)\n", .{});
+            },
+        }
+        std.debug.print("\n", .{});
+    }
+    std.debug.print("=== End Parse Results ===\n\n", .{});
 }
 
 test "Document.read" {
@@ -54,4 +122,6 @@ test "Document.read" {
 
     var doc = try Self.read(&r.interface, std.testing.allocator_instance.allocator());
     defer doc.deinit();
+
+    doc.print();
 }
