@@ -1,0 +1,15 @@
+{
+  "name": "js",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "@automerge/automerge": "^3.2.0"
+  }
+}
